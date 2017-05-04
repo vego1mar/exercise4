@@ -52,6 +52,8 @@ public class JmsSender {
             producer.setDeliveryMode(jmsDeliveryMode);
             Order order = new Order(orderId, product, price);
             ObjectMessage message = session.createObjectMessage(order);
+            message.setJMSType("Order");
+            message.setStringProperty("WDSR-System", "OrderProcessor");
             producer.send(message);
             session.close();
             connection.close();

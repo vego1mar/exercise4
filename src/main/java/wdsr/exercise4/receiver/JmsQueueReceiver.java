@@ -1,10 +1,15 @@
 package wdsr.exercise4.receiver;
 
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
+
 import javax.jms.Connection;
 import javax.jms.Destination;
 import javax.jms.JMSException;
 import javax.jms.Message;
 import javax.jms.MessageConsumer;
+import javax.jms.MessageFormatException;
 import javax.jms.MessageListener;
 import javax.jms.ObjectMessage;
 import javax.jms.Session;
@@ -15,22 +20,22 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import wdsr.exercise4.PriceAlert;
+import wdsr.exercise4.VolumeAlert;
 
 /**
- * TODO Complete this class so that it consumes messages from the given queue and invokes the
+ * Complete this class so that it consumes messages from the given queue and invokes the
  * registered callback when an alert is received.
- * 
  * Assume the ActiveMQ broker is running on tcp://localhost:62616
  */
 public class JmsQueueReceiver {
     private static final Logger log = LoggerFactory.getLogger(JmsQueueReceiver.class);
     private final String jmsBrokerURL = "tcp://localhost:62616";
-    private final String queueName;
     private final boolean isJMSSessionTransacted = false;
     private final int jmsAcknowledgementMode = Session.AUTO_ACKNOWLEDGE;
     private MessageConsumer consumer;
     private Session session;
     private Connection connection;
+    private Destination destination;
 
     /**
      * Creates this object
@@ -38,7 +43,26 @@ public class JmsQueueReceiver {
      * @param queueName Name of the queue to consume messages from.
      */
     public JmsQueueReceiver(final String queueName) {
-        this.queueName = queueName;
+        ActiveMQConnectionFactory factory = new ActiveMQConnectionFactory(jmsBrokerURL);
+        factory.setTrustedPackages(getListOfTrustedPackages());
+
+        try {
+            connection = factory.createConnection();
+            connection.start();
+            session = connection.createSession(isJMSSessionTransacted, jmsAcknowledgementMode);
+            destination = session.createQueue(queueName);
+        } catch (JMSException x) {
+            log.error(x.getMessage());
+        } catch (Exception x) {
+            log.error(x.getMessage());
+        }
+    }
+
+    private List<String> getListOfTrustedPackages() {
+        List<String> trustedPackages = new ArrayList<String>();
+        trustedPackages.add("wdsr.exercise4");
+        trustedPackages.add("java.math");
+        return trustedPackages;
     }
 
     /**
@@ -49,11 +73,6 @@ public class JmsQueueReceiver {
      */
     public void registerCallback(AlertService alertService) {
         try {
-            ActiveMQConnectionFactory factory = new ActiveMQConnectionFactory(jmsBrokerURL);
-            connection = factory.createConnection();
-            connection.start();
-            session = connection.createSession(isJMSSessionTransacted, jmsAcknowledgementMode);
-            Destination destination = session.createQueue(queueName);
             consumer = session.createConsumer(destination);
 
             consumer.setMessageListener(new MessageListener() {
@@ -65,16 +84,18 @@ public class JmsQueueReceiver {
                                 alertPrice(alertService, message);
                                 break;
                             case "VolumeAlert":
+                                alertVolume(alertService, message);
                                 break;
                         }
                     } catch (JMSException x) {
-                        log.error(x.getMessage() + " [registerCallback::onMessage]");
+                        log.error(x.getMessage());
                     }
                 }
             });
-
+        } catch (JMSException x) {
+            log.error(x.getMessage());
         } catch (Exception x) {
-            log.error(x.getMessage() + " [registerCallback]");
+            log.error(x.getMessage());
         }
     }
 
@@ -92,31 +113,117 @@ public class JmsQueueReceiver {
         }
     }
 
-
     private void alertPrice(AlertService alertService, Message message) {
         if (message instanceof ObjectMessage) {
             try {
                 ObjectMessage objectMessage = (ObjectMessage) message;
                 PriceAlert priceAlert = (PriceAlert) objectMessage.getObject();
                 alertService.processPriceAlert(priceAlert);
-                log.info("[registerListenerForPriceAlert::onMessage::ObjectMessage]");
+            } catch (MessageFormatException x) {
+                log.error(x.getMessage());
+            } catch (JMSException x) {
+                log.error(x.getMessage());
             } catch (Exception x) {
-                log.error(x.getMessage() + " [registerListenerForPriceAlert::onMessage::ObjectMessage]");
+                log.error(x.getMessage());
             }
 
         } else if (message instanceof TextMessage) {
             try {
                 TextMessage textMessage = (TextMessage) message;
-                PriceAlert priceAlert = (PriceAlert) textMessage.getBody(PriceAlert.class);
+                PriceAlert priceAlert = getPriceAlertFromStringMessage(textMessage.getText());
                 alertService.processPriceAlert(priceAlert);
-                log.info("[registerListenerForPriceAlert::onMessage::TextMessage]");
+            } catch (JMSException x) {
+                log.error(x.getMessage());
             } catch (Exception x) {
-                log.error(x.getMessage() + " [registerListenerForPriceAlert::onMessage::TextMessage]");
+                log.error(x.getMessage());
             }
         }
     }
 
-    // TODO
+    private void alertVolume(AlertService alertService, Message message) {
+        if (message instanceof ObjectMessage) {
+            try {
+                ObjectMessage objectMessage = (ObjectMessage) message;
+                VolumeAlert volumeAlert = (VolumeAlert) objectMessage.getObject();
+                alertService.processVolumeAlert(volumeAlert);
+            } catch (MessageFormatException x) {
+                log.error(x.getMessage());
+            } catch (JMSException x) {
+                log.error(x.getMessage());
+            } catch (Exception x) {
+                log.error(x.getMessage());
+            }
+
+        } else if (message instanceof TextMessage) {
+            try {
+                TextMessage textMessage = (TextMessage) message;
+                VolumeAlert volumeAlert = getVolumeAlertFromStringMessage(textMessage.getText());
+                alertService.processVolumeAlert(volumeAlert);
+            } catch (JMSException x) {
+                log.error(x.getMessage());
+            } catch (Exception x) {
+                log.error(x.getMessage());
+            }
+        }
+    }
+
+    private PriceAlert getPriceAlertFromStringMessage(String message) {
+        PriceAlert priceAlert = null;
+
+        try {
+            int indexOfTimestampStart = message.indexOf('=') + 1;
+            int indexOfTimestampEnd = message.indexOf('\n');
+            String timestampString = message.substring(indexOfTimestampStart, indexOfTimestampEnd);
+            String cuttedOffMessage = message.substring(indexOfTimestampEnd + 1, message.length());
+            int indexOfStockStart = cuttedOffMessage.indexOf('=') + 1;
+            int indexOfStockEnd = cuttedOffMessage.indexOf('\n');
+            String stockString = cuttedOffMessage.substring(indexOfStockStart, indexOfStockEnd);
+            cuttedOffMessage = cuttedOffMessage.substring(indexOfStockEnd + 1, cuttedOffMessage.length());
+            int indexOfPriceStart = cuttedOffMessage.indexOf('=') + 1;
+            String priceString = cuttedOffMessage.substring(indexOfPriceStart + 1, cuttedOffMessage.length());
+            long timestamp = Long.parseLong(timestampString);
+            long price = Long.parseLong(priceString);
+            BigDecimal bigPrice = new BigDecimal(price);
+            priceAlert = new PriceAlert(timestamp, stockString, bigPrice);
+        } catch (NumberFormatException x) {
+            log.error(x.getMessage());
+        } catch (IndexOutOfBoundsException x) {
+            log.error(x.getMessage());
+        } catch (Exception x) {
+            log.error(x.getMessage());
+        }
+
+        return priceAlert;
+    }
+
+    private VolumeAlert getVolumeAlertFromStringMessage(String message) {
+        VolumeAlert volumeAlert = null;
+
+        try {
+            int indexOfTimestampStart = message.indexOf('=') + 1;
+            int indexOfTimestampEnd = message.indexOf('\n');
+            String timestampString = message.substring(indexOfTimestampStart, indexOfTimestampEnd);
+            String cuttedOffMessage = message.substring(indexOfTimestampEnd + 1, message.length());
+            int indexOfStockStart = cuttedOffMessage.indexOf('=') + 1;
+            int indexOfStockEnd = cuttedOffMessage.indexOf('\n');
+            String stockString = cuttedOffMessage.substring(indexOfStockStart, indexOfStockEnd);
+            cuttedOffMessage = cuttedOffMessage.substring(indexOfStockEnd + 1, cuttedOffMessage.length());
+            int indexOfVolumeStart = cuttedOffMessage.indexOf('=') + 1;
+            String volumeString = cuttedOffMessage.substring(indexOfVolumeStart, cuttedOffMessage.length());
+            long timestamp = Long.parseLong(timestampString);
+            long volume = Long.parseLong(volumeString);
+            volumeAlert = new VolumeAlert(timestamp, stockString, volume);
+        } catch (NumberFormatException x) {
+            log.error(x.getMessage());
+        } catch (IndexOutOfBoundsException x) {
+            log.error(x.getMessage());
+        } catch (Exception x) {
+            log.error(x.getMessage());
+        }
+
+        return volumeAlert;
+    }
+
     // This object should start consuming messages when registerCallback method is invoked.
 
     // This object should consume two types of messages:
