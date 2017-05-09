@@ -12,16 +12,16 @@ import org.apache.activemq.ActiveMQConnectionFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class JmsMyQueueSender {
-    private static final Logger log = LoggerFactory.getLogger(JmsMyQueueSender.class);
+public class JmsMyTopicSender {
+    private static final Logger log = LoggerFactory.getLogger(JmsMyTopicSender.class);
     private final long TRANCHE_OF_MESSAGES_SIZE = 10_000;
-    private final String jmsQueueName;
+    private final String jmsTopicName;
     private final String jmsBrokerURL = "tcp://localhost:61616";
     private final boolean isJMSSessionTransacted = false;
     private final int jmsAcknowledgmentMode = Session.AUTO_ACKNOWLEDGE;
 
-    public JmsMyQueueSender(final String jmsQueueName) {
-        this.jmsQueueName = jmsQueueName;
+    public JmsMyTopicSender(final String jmsTopicName) {
+        this.jmsTopicName = jmsTopicName;
     }
 
     public boolean sendTrancheOfMessages() {
@@ -30,7 +30,7 @@ public class JmsMyQueueSender {
             Connection connection = connectionFactory.createConnection();
             connection.start();
             Session session = connection.createSession(isJMSSessionTransacted, jmsAcknowledgmentMode);
-            Destination destination = session.createQueue(jmsQueueName);
+            Destination destination = session.createTopic(jmsTopicName);
             MessageProducer producer = session.createProducer(destination);
             produceTextMessages(producer, DeliveryMode.PERSISTENT, session);
             produceTextMessages(producer, DeliveryMode.NON_PERSISTENT, session);

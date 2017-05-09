@@ -4,13 +4,13 @@ import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
-public class JmsMyQueueSenderTest {
-    private final String JMS_QUEUE_NAME = "VEGO1MAR.QUEUE";
+public class JmsMyTopicSenderTest {
+    private final String JMS_TOPIC_NAME = "VEGO1MAR.TOPIC";
 
     @Test
     public void shouldSentTrancheOfTextMessagesToQueue() {
         // given
-        JmsMyQueueSender service = new JmsMyQueueSender(JMS_QUEUE_NAME);
+        JmsMyTopicSender service = new JmsMyTopicSender(JMS_TOPIC_NAME);
 
         // when
         boolean result = service.sendTrancheOfMessages();
